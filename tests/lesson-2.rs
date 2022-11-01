@@ -11,8 +11,6 @@ async fn basic_db_test() {
     let state = SharedState::default();
     let mut app = router(&state);
 
-    // `Router` implements `tower::Service<Request<Body>>` so we can
-    // call it like any tower service, no need to run an HTTP server.
     let response = app
         .call(
             Request::builder()
@@ -41,15 +39,12 @@ async fn basic_db_test() {
     assert_eq!(&body[..], b"Hello World");
 }
 
-#[ignore]
 #[tokio::test]
 async fn big_request() {
     let state = SharedState::default();
     let mut app = router(&state);
     let bytes = include_bytes!("../crab.png");
 
-    // `Router` implements `tower::Service<Request<Body>>` so we can
-    // call it like any tower service, no need to run an HTTP server.
     let response = app
         .call(
             Request::builder()

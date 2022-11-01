@@ -6,12 +6,16 @@ use std::{
 
 use axum::{
     body::Bytes,
-    extract::{Path, Query, State},
+    extract::{DefaultBodyLimit, Path, Query, State},
+    handler::Handler,
     http::StatusCode,
     response::{Html, IntoResponse},
     routing::get,
     Router,
 };
+use hyper::Request;
+use tower::{Layer, Service, ServiceBuilder};
+use tower_http::limit::RequestBodyLimitLayer;
 
 /// Custom type for a shared state
 pub type SharedState = Arc<RwLock<AppState>>;
@@ -24,7 +28,16 @@ pub fn router(state: &SharedState) -> Router<SharedState> {
     Router::with_state(Arc::clone(&state))
         .route("/", get(hello))
         .route("/hello", get(say_hi))
-        .route("/kv/:key", get(kv_get).post(kv_set))
+        .route(
+            "/kv/:key",
+            get(kv_get).post_service(
+                ServiceBuilder::new()
+                    .layer(DefaultBodyLimit::disable())
+                    .layer(RequestBodyLimitLayer::new(1024 * 8_000))
+                    .service(kv_set.with_state(Arc::clone(&state))),
+            ),
+        )
+        .layer(LogLayer::new())
 }
 
 #[derive(Debug)]
@@ -85,4 +98,54 @@ async fn say_hi(Query(params): Query<HashMap<String, String>>) -> impl IntoRespo
 
 async fn hello() -> impl IntoResponse {
     Html("<h1>Hello Axum</h1>")
+}
+
+#[derive(Clone, Copy)]
+struct LogService<S> {
+    inner: S,
+}
+
+impl<S> LogService<S> {
+    fn new(inner: S) -> Self {
+        Self { inner }
+    }
+}
+
+impl<S, B> Service<Request<B>> for LogService<S>
+where
+    S: Service<Request<B>> + Clone + Send,
+{
+    type Response = S::Response;
+
+    type Error = S::Error;
+
+    type Future = S::Future;
+
+    fn poll_ready(
+        &mut self,
+        cx: &mut std::task::Context<'_>,
+    ) -> std::task::Poll<Result<(), Self::Error>> {
+        self.inner.poll_ready(cx)
+    }
+
+    fn call(&mut self, req: Request<B>) -> Self::Future {
+        println!("processing {} {}", req.method(), req.uri().path());
+        self.inner.call(req)
+    }
+}
+
+struct LogLayer;
+
+impl LogLayer {
+    fn new() -> Self {
+        Self {}
+    }
+}
+
+impl<S> Layer<S> for LogLayer {
+    type Service = LogService<S>;
+
+    fn layer(&self, inner: S) -> Self::Service {
+        LogService::new(inner)
+    }
 }

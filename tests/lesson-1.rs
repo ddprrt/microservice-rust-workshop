@@ -11,8 +11,6 @@ async fn hello_world() {
     let state = SharedState::default();
     let mut app = router(&state);
 
-    // `Router` implements `tower::Service<Request<Body>>` so we can
-    // call it like any tower service, no need to run an HTTP server.
     let response = app
         .call(Request::builder().uri("/").body(Body::empty()).unwrap())
         .await
@@ -29,8 +27,6 @@ async fn say_hi_unknown() {
     let state = SharedState::default();
     let mut app = router(&state);
 
-    // `Router` implements `tower::Service<Request<Body>>` so we can
-    // call it like any tower service, no need to run an HTTP server.
     let response = app
         .call(
             Request::builder()
