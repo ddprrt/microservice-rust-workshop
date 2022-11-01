@@ -26,7 +26,7 @@ pub fn router(state: &SharedState) -> Router<SharedState> {
 
 async fn say_hi(Query(params): Query<HashMap<String, String>>) -> impl IntoResponse {
     Html(format!(
-        "<h1>Hello {}",
+        "<h1>Hello {}</h1>",
         params.get("name").unwrap_or(&"Unknown Visitor".to_string())
     ))
 }
