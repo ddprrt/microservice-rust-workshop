@@ -73,3 +73,22 @@ async fn big_request() {
     assert_eq!(body.len(), bytes.len());
     assert_eq!(&body[..], &bytes[..]);
 }
+
+#[tokio::test]
+async fn no_entry() {
+    let state = SharedState::default();
+    let mut app = router(&state);
+
+    let response = app
+        .call(
+            Request::builder()
+                .uri("/kv/crab")
+                .method("GET")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::NOT_FOUND);
+}

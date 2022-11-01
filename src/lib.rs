@@ -10,12 +10,13 @@ use axum::{
     handler::Handler,
     http::StatusCode,
     response::{Html, IntoResponse},
-    routing::get,
+    routing::{delete, get},
     Router,
 };
+use futures::future::BoxFuture;
 use hyper::Request;
 use tower::{Layer, Service, ServiceBuilder};
-use tower_http::limit::RequestBodyLimitLayer;
+use tower_http::{auth::RequireAuthorizationLayer, limit::RequestBodyLimitLayer};
 
 /// Custom type for a shared state
 pub type SharedState = Arc<RwLock<AppState>>;
@@ -25,7 +26,7 @@ pub struct AppState {
 }
 
 pub fn router(state: &SharedState) -> Router<SharedState> {
-    Router::with_state(Arc::clone(&state))
+    Router::with_state(Arc::clone(state))
         .route("/", get(hello))
         .route("/hello", get(say_hi))
         .route(
@@ -34,10 +35,31 @@ pub fn router(state: &SharedState) -> Router<SharedState> {
                 ServiceBuilder::new()
                     .layer(DefaultBodyLimit::disable())
                     .layer(RequestBodyLimitLayer::new(1024 * 8_000))
-                    .service(kv_set.with_state(Arc::clone(&state))),
+                    .service(kv_set.with_state(Arc::clone(state))),
             ),
         )
+        .nest("/admin", admin_routes(&state))
         .layer(LogLayer::new())
+}
+
+fn admin_routes(state: &SharedState) -> Router<SharedState> {
+    async fn remove_key(
+        Path(key): Path<String>,
+        State(state): State<SharedState>,
+    ) -> Result<(), ErrorStatus> {
+        state.write()?.db.remove(&key);
+        Ok(())
+    }
+
+    async fn delete_all_keys(State(state): State<SharedState>) -> Result<(), ErrorStatus> {
+        state.write()?.db.clear();
+        Ok(())
+    }
+
+    Router::with_state(Arc::clone(state))
+        .route("/kv", delete(delete_all_keys))
+        .route("/kv/:key", delete(remove_key))
+        .layer(RequireAuthorizationLayer::bearer("secret"))
 }
 
 #[derive(Debug)]
@@ -113,13 +135,13 @@ impl<S> LogService<S> {
 
 impl<S, B> Service<Request<B>> for LogService<S>
 where
-    S: Service<Request<B>> + Clone + Send,
+    S: Service<Request<B>> + Clone + Send + 'static,
+    S::Future: Send,
+    B: Send + 'static,
 {
     type Response = S::Response;
-
     type Error = S::Error;
-
-    type Future = S::Future;
+    type Future = BoxFuture<'static, Result<S::Response, S::Error>>;
 
     fn poll_ready(
         &mut self,
@@ -129,8 +151,17 @@ where
     }
 
     fn call(&mut self, req: Request<B>) -> Self::Future {
-        println!("processing {} {}", req.method(), req.uri().path());
-        self.inner.call(req)
+        let this = self.inner.clone();
+        let mut this = std::mem::replace(&mut self.inner, this);
+        let method = req.method().to_owned();
+        let path = req.uri().path().to_owned();
+
+        println!("processing {} {}", method, path);
+        Box::pin(async move {
+            let res = this.call(req).await;
+            println!("end processing {} {}", method, path);
+            res
+        })
     }
 }
 
