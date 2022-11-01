@@ -22,6 +22,7 @@ async fn hello_world() {
     assert_eq!(&body[..], b"<h1>Hello Axum</h1>");
 }
 
+#[ignore]
 #[tokio::test]
 async fn say_hi_unknown() {
     let state = SharedState::default();
@@ -43,6 +44,7 @@ async fn say_hi_unknown() {
     assert_eq!(&body[..], b"<h1>Hello Unknown Visitor</h1>");
 }
 
+#[ignore]
 #[tokio::test]
 async fn say_hi_stefan() {
     let state = SharedState::default();

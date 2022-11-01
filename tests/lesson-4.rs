@@ -6,6 +6,7 @@ use axum::{
 use microservice_rust_workshop::{router, SharedState};
 use tower::Service; // for `call`
 
+#[ignore]
 #[tokio::test]
 async fn no_auth() {
     let state = SharedState::default();
@@ -54,6 +55,7 @@ async fn no_auth() {
     assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
 }
 
+#[ignore]
 #[tokio::test]
 async fn delete_entries() {
     let state = SharedState::default();
@@ -116,6 +118,7 @@ async fn delete_entries() {
     assert_eq!(response.status(), StatusCode::NOT_FOUND);
 }
 
+#[ignore]
 #[tokio::test]
 async fn delete_keys() {
     let state = SharedState::default();

@@ -34,6 +34,7 @@ async fn log_test() {
     assert_eq!("processing GET /", output.trim());
 }
 
+#[ignore]
 #[tokio::test]
 async fn advanced_log_test() {
     // Run with nocapture
