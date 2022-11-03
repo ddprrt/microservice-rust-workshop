@@ -9,7 +9,6 @@ use gag::BufferRedirect;
 use microservice_rust_workshop::{router, SharedState};
 use tower::Service; // for `call`
 
-#[ignore]
 #[tokio::test]
 async fn log_test() {
     // Run with nocapture
