@@ -13,23 +13,27 @@ use axum::{
     routing::{delete, get},
     Router,
 };
-use hyper::Request;
-use tower::{Layer, Service, ServiceBuilder};
+
+use tower::ServiceBuilder;
 use tower_http::{
     auth::RequireAuthorizationLayer, limit::RequestBodyLimitLayer, trace::TraceLayer,
 };
+use tracing::{event, instrument, span, Level};
 use tracing_subscriber::prelude::*;
 use tracing_subscriber::util::SubscriberInitExt;
 
 /// Custom type for a shared state
 pub type SharedState = Arc<RwLock<AppState>>;
-#[derive(Default)]
+#[derive(Default, Debug)]
 pub struct AppState {
     db: HashMap<String, Bytes>,
 }
 
 pub fn router(state: &SharedState) -> Router<SharedState> {
     tracing_subscriber::registry()
+        .with(tracing_subscriber::EnvFilter::new(
+            std::env::var("RUST_LOG").unwrap_or_else(|_| "microservice_rust_workshop=debug".into()),
+        ))
         .with(tracing_subscriber::fmt::layer())
         .init();
 
@@ -69,54 +73,6 @@ pub fn admin_routes(state: &SharedState) -> Router<SharedState> {
         .layer(RequireAuthorizationLayer::bearer("secret"))
 }
 
-#[derive(Clone, Copy)]
-struct LogService<S> {
-    inner: S,
-}
-
-impl<S> LogService<S> {
-    fn new(inner: S) -> Self {
-        Self { inner }
-    }
-}
-
-struct LogLayer {}
-
-impl LogLayer {
-    fn new() -> Self {
-        Self {}
-    }
-}
-
-impl<S> Layer<S> for LogLayer {
-    type Service = LogService<S>;
-
-    fn layer(&self, inner: S) -> Self::Service {
-        LogService::new(inner)
-    }
-}
-
-impl<S, B> Service<Request<B>> for LogService<S>
-where
-    S: Service<Request<B>>,
-{
-    type Response = S::Response;
-    type Error = S::Error;
-    type Future = S::Future;
-
-    fn poll_ready(
-        &mut self,
-        cx: &mut std::task::Context<'_>,
-    ) -> std::task::Poll<Result<(), Self::Error>> {
-        self.inner.poll_ready(cx)
-    }
-
-    fn call(&mut self, req: Request<B>) -> Self::Future {
-        println!("processing {} {}", req.method(), req.uri().path());
-        self.inner.call(req)
-    }
-}
-
 #[derive(Debug)]
 struct ErrorStatus(StatusCode);
 
@@ -154,14 +110,19 @@ async fn kv_set(
     Ok(())
 }
 
+#[instrument]
 async fn kv_get(
     Path(key): Path<String>,
     State(state): State<SharedState>,
 ) -> Result<Bytes, ErrorStatus> {
+    let span = span!(Level::DEBUG, "enter kv_get");
+    let _guard = span.enter();
     let db = &state.read()?.db;
     if let Some(val) = db.get(&key) {
+        event!(Level::DEBUG, "Found");
         Ok(val.to_owned())
     } else {
+        event!(Level::DEBUG, "Not found");
         Err(StatusCode::NOT_FOUND.into())
     }
 }
