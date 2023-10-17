@@ -38,6 +38,10 @@ pub async fn get_kv(
     }
 }
 
+type KVResult<T: IntoResponse> = Result<T, KVError>;
+
+// get rid of the unwraps, use error propagation!
+// don't change the signature of the function
 pub async fn grayscale(
     Path(key): Path<String>,
     State(state): State<SharedState>,
@@ -45,24 +49,31 @@ pub async fn grayscale(
     let image = match state.read()?.db.get(&key) {
         Some((content_type, data)) => {
             if content_type == "image/png" {
-                image::load_from_memory(&data).unwrap()
+                image::load_from_memory(&data)?
             } else {
                 return Err(KVError::new(
                     StatusCode::FORBIDDEN,
-                    "Not possible to grayscale this type of image",
+                    "Not possible to grayscale this type of data",
                 ));
             }
         }
         None => return Err(KVError::new(StatusCode::NOT_FOUND, "Key not found")),
     };
 
+    // Get rid of all the manual labor here and go from DynamicImage to ImageResponse
+    // Step 1: Create a struct `ImageResponse` that can hold `Bytes`
+    // Step 2: Convert from `DynamicImage` to `ImageResponse`
+    //         Do all the allocations, writings, Error Handlings
+    //         Hint: TryFrom
+    // Step 3: Go from ImageResponse to `impl IntoResponse`
+    //         Hint: impl IntoResponse for ...
+
     let mut vec: Vec<u8> = Vec::new();
 
     let mut cursor = Cursor::new(&mut vec);
     image
         .grayscale()
-        .write_to(&mut cursor, ImageOutputFormat::Png)
-        .unwrap();
+        .write_to(&mut cursor, ImageOutputFormat::Png)?;
     let bytes: Bytes = vec.into();
 
     Ok(([("content-type", "image/png")], bytes).into_response())

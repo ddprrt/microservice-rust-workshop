@@ -2,6 +2,7 @@ use std::sync::PoisonError;
 
 use axum::response::IntoResponse;
 use hyper::StatusCode;
+use image::ImageError;
 
 #[derive(Debug)]
 pub struct KVError(StatusCode, String);
@@ -39,5 +40,15 @@ fn _internal_server_error(_err: impl std::error::Error) -> (StatusCode, String) 
 impl IntoResponse for KVError {
     fn into_response(self) -> axum::response::Response {
         (self.0, self.1).into_response()
+    }
+}
+
+impl From<ImageError> for KVError {
+    fn from(value: ImageError) -> Self {
+        match value {
+            ImageError::IoError(err) => Self::new(StatusCode::BAD_REQUEST, err),
+            ImageError::Unsupported(err) => Self::new(StatusCode::BAD_REQUEST, err),
+            _ => Self::new(StatusCode::BAD_REQUEST, ":-("),
+        }
     }
 }
