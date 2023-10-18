@@ -1,19 +1,26 @@
-use std::io::Cursor;
-
 use axum::{
     extract::{Path, State},
     headers::ContentType,
-    response::IntoResponse,
+    response::{IntoResponse, Response},
     TypedHeader,
 };
 use hyper::{body::Bytes, StatusCode};
-use image::ImageOutputFormat;
 
-use crate::SharedState;
+use crate::{state::StoredType, SharedState};
 
-use self::kv_error::KVError;
+use self::{image_response::ImageResponse, kv_error::KVError};
 
+mod image_response;
 mod kv_error;
+
+fn get_stored_type(content_type: impl ToString, data: Bytes) -> KVResult<StoredType> {
+    if content_type.to_string().starts_with("image") {
+        let image = image::load_from_memory(&data)?;
+        Ok(StoredType::Image(image))
+    } else {
+        Ok(StoredType::Other(data))
+    }
+}
 
 pub async fn post_kv(
     Path(key): Path<String>,
@@ -21,60 +28,32 @@ pub async fn post_kv(
     State(state): State<SharedState>,
     data: Bytes,
 ) -> Result<String, KVError> {
-    state
-        .write()?
-        .db
-        .insert(key, (content_type.to_string(), data));
+    let stored_type = get_stored_type(content_type, data)?;
+    state.write()?.db.insert(key, stored_type);
     Ok("OK".to_string())
 }
 
 pub async fn get_kv(
     Path(key): Path<String>,
     State(state): State<SharedState>,
-) -> Result<impl IntoResponse, KVError> {
+) -> Result<Response, KVError> {
     match state.read()?.db.get(&key) {
-        Some((content_type, data)) => Ok(([("content-type", content_type.clone())], data.clone())),
+        Some(StoredType::Image(image)) => Ok(ImageResponse::try_from(image)?.into_response()),
+        Some(StoredType::Other(bytes)) => Ok(bytes.clone().into_response()),
         None => Err(KVError::new(StatusCode::NOT_FOUND, "Key not found")),
     }
 }
 
-type KVResult<T: IntoResponse> = Result<T, KVError>;
+type KVResult<T> = Result<T, KVError>;
 
 // get rid of the unwraps, use error propagation!
 // don't change the signature of the function
 pub async fn grayscale(
     Path(key): Path<String>,
     State(state): State<SharedState>,
-) -> Result<impl IntoResponse, KVError> {
-    let image = match state.read()?.db.get(&key) {
-        Some((content_type, data)) => {
-            if content_type == "image/png" {
-                image::load_from_memory(&data)?
-            } else {
-                return Err(KVError::new(
-                    StatusCode::FORBIDDEN,
-                    "Not possible to grayscale this type of data",
-                ));
-            }
-        }
-        None => return Err(KVError::new(StatusCode::NOT_FOUND, "Key not found")),
-    };
-
-    // Get rid of all the manual labor here and go from DynamicImage to ImageResponse
-    // Step 1: Create a struct `ImageResponse` that can hold `Bytes`
-    // Step 2: Convert from `DynamicImage` to `ImageResponse`
-    //         Do all the allocations, writings, Error Handlings
-    //         Hint: TryFrom
-    // Step 3: Go from ImageResponse to `impl IntoResponse`
-    //         Hint: impl IntoResponse for ...
-
-    let mut vec: Vec<u8> = Vec::new();
-
-    let mut cursor = Cursor::new(&mut vec);
-    image
-        .grayscale()
-        .write_to(&mut cursor, ImageOutputFormat::Png)?;
-    let bytes: Bytes = vec.into();
-
-    Ok(([("content-type", "image/png")], bytes).into_response())
+) -> KVResult<impl IntoResponse> {
+    match state.read()?.db.get(&key) {
+        Some(StoredType::Image(image)) => ImageResponse::try_from(image.grayscale()),
+        _ => Err(KVError::new(StatusCode::NOT_FOUND, "Key not found")),
+    }
 }

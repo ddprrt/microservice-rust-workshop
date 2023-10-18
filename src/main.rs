@@ -1,6 +1,6 @@
 use std::net::SocketAddr;
 
-use microservice_rust_workshop::{router, SharedState};
+use microservice_rust_workshop::{router, state::SharedState};
 
 type BoxError = Box<dyn std::error::Error>;
 

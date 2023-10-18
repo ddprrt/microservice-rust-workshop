@@ -1,23 +1,17 @@
-use std::{
-    collections::HashMap,
-    sync::{Arc, RwLock},
-};
+use std::sync::Arc;
 
 use axum::{
-    body::Bytes,
     extract::{Query, State},
-    headers::ContentType,
     response::IntoResponse,
     routing::get,
     Router,
 };
 use kv_store::{get_kv, grayscale, post_kv};
 use serde::Deserialize;
+use state::SharedState;
 
 mod kv_store;
-
-/// Custom type for a shared state
-pub type SharedState = Arc<RwLock<AppState>>;
+pub mod state;
 
 async fn handler() -> impl IntoResponse {
     "<h1>Hello Axum</h1>"
@@ -38,11 +32,6 @@ async fn hello_handler(Query(name): Query<Name>) -> impl IntoResponse {
 async fn poison(State(state): State<SharedState>) -> impl IntoResponse {
     let _guard = state.write().unwrap();
     panic!("At the disco");
-}
-
-#[derive(Default)]
-pub struct AppState {
-    db: HashMap<String, (String, Bytes)>,
 }
 
 pub fn router(state: &SharedState) -> Router<SharedState> {

@@ -6,7 +6,7 @@ use axum::{
 };
 
 use gag::BufferRedirect;
-use microservice_rust_workshop::{router, SharedState};
+use microservice_rust_workshop::{router, state::SharedState};
 use tower::Service; // for `call`
 
 #[ignore]
